@@ -1,4 +1,4 @@
-# Pi Agent Context
+# Pi Agent VSCode Extension
 
 Shares your VSCode editor state with a terminal-based Pi agent so you don't
 have to describe what you're looking at.
