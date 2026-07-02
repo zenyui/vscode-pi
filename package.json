@@ -59,11 +59,13 @@
     "vscode:prepublish": "npm run build",
     "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18",
     "watch": "npm run build -- --sourcemap --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "package": "vsce package"
   },
   "devDependencies": {
     "@types/node": "^18.19.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.24.0",
     "esbuild": "^0.21.0",
     "typescript": "^5.4.0"
   }
