@@ -15,6 +15,33 @@ This little extension fixes that. It quietly tells your terminal Pi agent:
 
 No more copy-paste. No more "line 42, no wait, my line 42."
 
+## 🚀 Quickstart
+
+**1. Build & install the VSCode extension:**
+
+```sh
+npm install
+npm run package                              # → vscode-pi-ext-0.0.1.vsix
+code --install-extension vscode-pi-ext-0.0.1.vsix
+```
+
+Reload VSCode — you'll see `📡 Pi` in the status bar.
+
+**2. Teach your terminal Pi agent to read the notes:**
+
+```sh
+cp pi/pi-vscode-context.ts ~/.pi/agent/extensions/
+```
+
+If Pi is already running, type `/reload`.
+
+**3. Use it.** Open a project in VSCode *and* run `pi` in that same project.
+Then in the Pi session, type `/vscode` — or just let the agent call the
+`vscode_context` tool when it needs to see what you're doing.
+
+> Just hacking on the extension? Skip packaging and press `F5` in VSCode to
+> launch an Extension Development Host instead.
+
 ## How the magic works
 
 VSCode and your terminal agent are two separate processes that don't share a
