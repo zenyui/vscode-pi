@@ -66,11 +66,17 @@ Two moving parts, one cable.
 cp pi/pi-vscode-context.ts ~/.pi/agent/extensions/
 ```
 
-Now, in your terminal Pi session:
+Now the agent just *knows* what you're doing:
 
-- Type **`/vscode`** to hand the agent your current editor state, or
-- Just ask it to do something — it can call the **`vscode_context`** tool on
-  its own whenever it needs to know what you're staring at.
+- **Auto-inject** — your active file + selected lines ride along with every
+  message you send (hidden, deduped). No command needed. The pi footer shows
+  a live `📎 vscode: file.ts L120-148` of what's selected.
+- **`/vscode-auto off`** — mute auto-injection for a while (`on` to resume).
+- **`/vscode`** — manually dump the full context (incl. open files) on demand.
+- **`vscode_context`** tool — the agent pulls the full context itself when it
+  wants more than the selection.
+- **`open_in_editor`** tool — the agent opens a file at a line in your window
+  (`code --goto path:line`), e.g. "opening the bug at `foo.ts:120`".
 
 The companion hunts for the context file in this order: `$PI_VSCODE_CONTEXT`,
 then `<cwd>/.pi/vscode-context.md`, then `~/.pi/vscode-context.md`.

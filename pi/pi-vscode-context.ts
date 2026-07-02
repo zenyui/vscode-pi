@@ -3,16 +3,19 @@
 // Install: copy to ~/.pi/agent/extensions/ (global) or .pi/extensions/ (project).
 //
 // What it does:
-//   - Auto-injects your current VSCode editor state (active file, open files,
-//     selected lines) into every message you send, as hidden metadata.
+//   - Auto-injects your ACTIVE FILE + SELECTED LINES into every message you send,
+//     as hidden metadata (deduped). Open-files list is left to the pull tool to
+//     keep turns small.
 //   - Shows a live footer status of what's selected in the TUI.
-//   - Also exposes an on-demand `/vscode` command and `vscode_context` tool.
+//   - `/vscode-auto [on|off]` toggles auto-injection.
+//   - `/vscode` and the `vscode_context` tool pull the FULL context on demand.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
+import { execFile } from "child_process";
 
 const STATUS_KEY = "vscode";
 
@@ -106,24 +109,106 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  // ---- Fully-auto injection: staple current editor context to every turn ----
+  let autoInject = true;
+
+  // Build a compact, selection-focused payload from the structured JSON.
+  // Returns null when there's nothing worth sending.
+  const buildInjection = (data: Ctx): string | null => {
+    const sel = data.selection;
+    if (sel && sel.selections.length > 0) {
+      const parts: string[] = [];
+      parts.push(`User is in \`${sel.path}\` (cursor line ${sel.cursorLine}).`);
+      for (const s of sel.selections) {
+        const range = s.startLine === s.endLine ? `line ${s.startLine}` : `lines ${s.startLine}-${s.endLine}`;
+        parts.push(`Selected ${range}${s.truncated ? " (truncated)" : ""}:`);
+        parts.push("```" + sel.languageId);
+        parts.push(s.text);
+        parts.push("```");
+      }
+      parts.push("(Full open-file list available via the vscode_context tool.)");
+      return parts.join("\n");
+    }
+    if (data.activeFile) {
+      return `User is focused on \`${data.activeFile}\` (no selection). Use the vscode_context tool for open files.`;
+    }
+    return null;
+  };
+
+  // ---- Smart auto-injection: attach active file + selection to each turn ----
   pi.on("before_agent_start", async (_event, _ctx) => {
-    const found = readMarkdown(process.cwd());
+    if (!autoInject) return;
+    const found = readJson(process.cwd());
     if (!found) return;
+    const payload = buildInjection(found.data);
+    if (!payload) return;
 
     // Dedupe: skip if identical to what we injected last turn (saves tokens;
     // the model still has the previous copy in context).
-    const hash = crypto.createHash("sha1").update(found.content).digest("hex");
+    const hash = crypto.createHash("sha1").update(payload).digest("hex");
     if (hash === lastInjectedHash) return;
     lastInjectedHash = hash;
 
     return {
       message: {
         customType: "vscode-context",
-        content: `Current VSCode editor state (auto-attached):\n\n${found.content}`,
+        content: `Current VSCode editor state (auto-attached):\n\n${payload}`,
         display: false,
       },
     };
+  });
+
+  // ---- Toggle auto-injection ----
+  pi.registerCommand("vscode-auto", {
+    description: "Toggle auto-injection of VSCode context (on|off)",
+    handler: async (args, ctx) => {
+      const a = (args || "").trim().toLowerCase();
+      autoInject = a === "on" ? true : a === "off" ? false : !autoInject;
+      lastInjectedHash = "";
+      ctx.ui.notify(`VSCode auto-inject ${autoInject ? "on" : "off"}`, "info");
+    },
+  });
+
+  // ---- Open a file in VSCode at a specific line ----
+  pi.registerTool({
+    name: "open_in_editor",
+    label: "Open in VSCode",
+    description:
+      "Open a file in the user's VSCode window and put the cursor on a line. " +
+      "Use when you want to show the user a specific location in a file.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "File path (absolute, or relative to the project root)" },
+        line: { type: "number", description: "1-based line number to jump to (optional)" },
+        column: { type: "number", description: "1-based column (optional)" },
+      },
+      required: ["path"],
+    } as never,
+    async execute(_id: unknown, params: { path: string; line?: number; column?: number }) {
+      const abs = path.isAbsolute(params.path) ? params.path : path.join(process.cwd(), params.path);
+      let target = abs;
+      if (params.line) {
+        target += `:${params.line}`;
+        if (params.column) target += `:${params.column}`;
+      }
+      const ok = await new Promise<{ ok: boolean; err?: string }>((resolve) => {
+        execFile("code", ["--goto", target], (error) => {
+          resolve(error ? { ok: false, err: error.message } : { ok: true });
+        });
+      });
+      const where = params.line ? `${params.path}:${params.line}` : params.path;
+      return {
+        content: [
+          {
+            type: "text",
+            text: ok.ok
+              ? `Opened ${where} in VSCode.`
+              : `Failed to open ${where} (is the 'code' command on PATH?): ${ok.err}`,
+          },
+        ],
+        details: { target },
+      };
+    },
   });
 
   // ---- On-demand tool the agent can call itself ----
