@@ -1,23 +1,20 @@
-# 📡 Pi Agent Context
+# Pi Agent Context
 
-> Your terminal Pi agent, but with eyes.
+Shares your VSCode editor state with a terminal-based Pi agent so you don't
+have to describe what you're looking at.
 
-You're in the editor. Your Pi agent is in the terminal. They live in the same
-project but can't see each other — so you keep typing *"the file I have open"*
-and *"the function I just selected"* like it's 2009 and you're describing a
-bug over the phone.
+On every editor change, the extension writes a context file with:
 
-This little extension fixes that. It quietly tells your terminal Pi agent:
+- the active file you're viewing
+- all open files
+- the exact lines you have selected (with file and line numbers)
 
-- 👀 **what file you're looking at**
-- 🗂️ **every file you have open**
-- ✂️ **the exact lines you've selected** (with file + line numbers)
+Your terminal Pi agent reads that file, so you can say "this function" instead
+of copy-pasting.
 
-No more copy-paste. No more "line 42, no wait, my line 42."
+## Quickstart
 
-## 🚀 Quickstart
-
-**1. Build & install the VSCode extension:**
+**1. Build and install the VSCode extension:**
 
 ```sh
 npm install
@@ -25,9 +22,9 @@ npm run package                              # → vscode-pi-ext-0.0.1.vsix
 code --install-extension vscode-pi-ext-0.0.1.vsix
 ```
 
-Reload VSCode — you'll see `📡 Pi` in the status bar.
+Reload VSCode. A `📡 Pi` indicator appears in the status bar.
 
-**2. Teach your terminal Pi agent to read the notes:**
+**2. Install the Pi companion extension:**
 
 ```sh
 cp pi/pi-vscode-context.ts ~/.pi/agent/extensions/
@@ -35,70 +32,58 @@ cp pi/pi-vscode-context.ts ~/.pi/agent/extensions/
 
 If Pi is already running, type `/reload`.
 
-**3. Use it.** Open a project in VSCode *and* run `pi` in that same project.
-Then in the Pi session, type `/vscode` — or just let the agent call the
-`vscode_context` tool when it needs to see what you're doing.
+**3. Use it.** Open a project in VSCode and run `pi` in the same project. The
+agent now sees your editor context automatically.
 
-> Just hacking on the extension? Skip packaging and press `F5` in VSCode to
-> launch an Extension Development Host instead.
+> Developing the extension? Press `F5` in VSCode to launch an Extension
+> Development Host instead of packaging.
 
-## How the magic works
+## How it works
 
-VSCode and your terminal agent are two separate processes that don't share a
-brain. So they pass notes. On every editor change, this extension drops a
-fresh context file:
+VSCode and the terminal agent are separate processes, so they communicate
+through a file. On every editor change (debounced), the extension writes:
 
-- `<workspace>/.pi/vscode-context.md` — the version the agent actually reads
-- `<workspace>/.pi/vscode-context.json` — the same thing, but for robots
+- `<workspace>/.pi/vscode-context.md` — read by the agent
+- `<workspace>/.pi/vscode-context.json` — machine-readable version
 
-A tidy little `📡 Pi` sits in your status bar. Green light = the agent can see
-you. Click it to pull the blinds down (`🚫 Pi`) when you want privacy.
+The `📡 Pi` status bar item shows sharing is on. Click it to toggle off
+(`🚫 Pi`) when you want privacy.
 
-## Wiring up the agent
+## Agent features
 
-Two moving parts, one cable.
+Once the companion is installed, the agent can:
 
-**1. Run the VSCode extension** (F5 in the dev host, or install the `.vsix`).
+- **Auto-inject** — your active file and selected lines are attached to every
+  message you send (hidden, deduped). The Pi footer shows the current
+  selection, e.g. `📎 vscode: file.ts L120-148`.
+- **`/vscode-auto off`** — pause auto-injection (`on` to resume).
+- **`/vscode`** — manually dump the full context, including open files.
+- **`vscode_context` tool** — the agent pulls full context on demand.
+- **`open_in_editor` tool** — the agent opens a file at a line in your window
+  (`code --goto path:line`).
 
-**2. Give the terminal agent a way to read the notes:**
+The companion looks for the context file in this order:
+`$PI_VSCODE_CONTEXT`, then `<cwd>/.pi/vscode-context.md`, then
+`~/.pi/vscode-context.md`.
 
-```sh
-cp pi/pi-vscode-context.ts ~/.pi/agent/extensions/
-```
+## Commands
 
-Now the agent just *knows* what you're doing:
-
-- **Auto-inject** — your active file + selected lines ride along with every
-  message you send (hidden, deduped). No command needed. The pi footer shows
-  a live `📎 vscode: file.ts L120-148` of what's selected.
-- **`/vscode-auto off`** — mute auto-injection for a while (`on` to resume).
-- **`/vscode`** — manually dump the full context (incl. open files) on demand.
-- **`vscode_context`** tool — the agent pulls the full context itself when it
-  wants more than the selection.
-- **`open_in_editor`** tool — the agent opens a file at a line in your window
-  (`code --goto path:line`), e.g. "opening the bug at `foo.ts:120`".
-
-The companion hunts for the context file in this order: `$PI_VSCODE_CONTEXT`,
-then `<cwd>/.pi/vscode-context.md`, then `~/.pi/vscode-context.md`.
-
-## Knobs & levers
-
-Status bar too subtle? Command palette to the rescue:
+Available in the command palette:
 
 - **Pi Context: Toggle Sharing**
 - **Pi Context: Write Context Now**
 - **Pi Context: Show Context File Path**
 
-Settings (`piContext.*`):
+## Settings
 
-| Setting | Default | What it does |
+| Setting (`piContext.*`) | Default | Description |
 |---|---|---|
-| `enabled` | `true` | Auto-share on every change |
-| `filePath` | `""` | Override the drop location (empty = `<workspace>/.pi/vscode-context.md`) |
-| `debounceMs` | `300` | How long to wait before writing after you stop fidgeting |
-| `maxSelectionLines` | `400` | Cap on selected lines shared verbatim (nobody needs your 10k-line paste) |
+| `enabled` | `true` | Auto-share on every editor change |
+| `filePath` | `""` | Override output path (empty = `<workspace>/.pi/vscode-context.md`) |
+| `debounceMs` | `300` | Delay before writing after edits stop |
+| `maxSelectionLines` | `400` | Max selected lines shared verbatim |
 
-## Hacking on it
+## Development
 
 ```sh
 npm install
@@ -106,8 +91,4 @@ npm run build     # bundle → dist/extension.js
 npm run watch     # rebuild on save
 ```
 
-Hit `F5` to launch an Extension Development Host and poke at it live.
-
----
-
-Made for people who'd rather point than describe.
+Press `F5` to launch an Extension Development Host.
