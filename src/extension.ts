@@ -1,10 +1,14 @@
 import * as vscode from "vscode";
-import * as fs from "fs";
 import * as path from "path";
+import { IpcServer, IncomingMessage, OutgoingMessage } from "./ipc";
+
+const PORT_ENV = "PI_VSCODE_PORT";
+const PORT_KEY = "piContext.port";
 
 let statusBar: vscode.StatusBarItem;
 let debounceTimer: NodeJS.Timeout | undefined;
 let enabled = true;
+let ipc: IpcServer | undefined;
 
 interface OpenFile {
   path: string;
@@ -39,14 +43,6 @@ function config() {
 
 function workspaceRoot(): string | undefined {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-}
-
-// Resolve the target file: <workspace>/.pi/vscode-context.md
-function resolvePath(): string {
-  const configured = config().get<string>("filePath")?.trim();
-  if (configured) return configured;
-  const root = workspaceRoot() ?? path.join(require("os").homedir());
-  return path.join(root, ".pi", "vscode-context.md");
 }
 
 function relTo(root: string | undefined, fsPath: string): string {
@@ -120,63 +116,68 @@ function collectContext(): Context {
   };
 }
 
-function renderMarkdown(ctx: Context): string {
-  const lines: string[] = [];
-  lines.push("# VSCode editor context");
-  lines.push("");
-  lines.push(`_Updated: ${ctx.timestamp}_`);
-  if (ctx.workspace) lines.push(`Workspace: \`${ctx.workspace}\``);
-  lines.push("");
-
-  lines.push("## Active file");
-  lines.push(ctx.activeFile ? `\`${ctx.activeFile}\`` : "_none_");
-  lines.push("");
-
-  lines.push("## Open files");
-  if (ctx.openFiles.length === 0) {
-    lines.push("_none_");
-  } else {
-    for (const f of ctx.openFiles) {
-      const marks = [f.active ? "active" : null, f.dirty ? "unsaved" : null]
-        .filter(Boolean)
-        .join(", ");
-      lines.push(`- \`${f.path}\`${marks ? ` (${marks})` : ""}`);
-    }
-  }
-  lines.push("");
-
-  lines.push("## Selection");
-  if (!ctx.selection || ctx.selection.selections.length === 0) {
-    const cur = ctx.selection ? ` (cursor at line ${ctx.selection.cursorLine})` : "";
-    lines.push(`_no selection_${cur}`);
-  } else {
-    const sel = ctx.selection;
-    for (const s of sel.selections) {
-      lines.push(
-        `\`${sel.path}\` lines ${s.startLine}-${s.endLine}${s.truncated ? " (truncated)" : ""}:`,
-      );
-      lines.push("");
-      lines.push("```" + sel.languageId);
-      lines.push(s.text);
-      lines.push("```");
-      lines.push("");
-    }
-  }
-
-  return lines.join("\n") + "\n";
-}
-
+// Push the current editor state to any connected pi sessions.
 function writeContext() {
   if (!enabled) return;
+  ipc?.broadcast({ type: "context", data: collectContext() });
+}
+
+// Turn the current selection (or active file) into a `@path#Lstart-end`
+// mention and push it into the pi prompt box.
+function sendSelectionToPi() {
+  if (!ipc || ipc.clientCount === 0) {
+    vscode.window.showWarningMessage(
+      "No Pi session connected. Run `pi` in a VSCode terminal.",
+    );
+    return;
+  }
+  const ctx = collectContext();
+  let text: string | undefined;
+  const sel = ctx.selection;
+  if (sel && sel.selections.length > 0) {
+    text = sel.selections
+      .map((s) =>
+        s.startLine === s.endLine
+          ? `@${sel.path}#L${s.startLine}`
+          : `@${sel.path}#L${s.startLine}-${s.endLine}`,
+      )
+      .join(" ");
+  } else if (ctx.activeFile) {
+    text = `@${ctx.activeFile}`;
+  }
+  if (!text) {
+    vscode.window.showWarningMessage("No file or selection to send.");
+    return;
+  }
+  ipc.broadcast({ type: "inject", text });
+}
+
+// pi -> VSCode: open a file, optionally selecting/revealing a line range.
+async function handleOpen(msg: Extract<IncomingMessage, { type: "open" }>) {
   try {
-    const ctx = collectContext();
-    const mdPath = resolvePath();
-    fs.mkdirSync(path.dirname(mdPath), { recursive: true });
-    fs.writeFileSync(mdPath, renderMarkdown(ctx), "utf8");
-    const jsonPath = mdPath.replace(/\.md$/, ".json");
-    fs.writeFileSync(jsonPath, JSON.stringify(ctx, null, 2), "utf8");
+    const root = workspaceRoot();
+    const abs = path.isAbsolute(msg.path)
+      ? msg.path
+      : path.join(root ?? process.cwd(), msg.path);
+    const doc = await vscode.workspace.openTextDocument(abs);
+    const editor = await vscode.window.showTextDocument(doc, {
+      viewColumn: vscode.ViewColumn.Active,
+    });
+    if (msg.line) {
+      const startLine = Math.max(0, msg.line - 1);
+      const endLine = Math.max(startLine, (msg.endLine ?? msg.line) - 1);
+      const col = Math.max(0, (msg.column ?? 1) - 1);
+      const range = new vscode.Range(
+        startLine,
+        col,
+        endLine,
+        doc.lineAt(endLine).range.end.character,
+      );
+      editor.selection = new vscode.Selection(range.start, range.end);
+      editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+    }
   } catch (err) {
-    console.error("piContext: failed to write context", err);
+    console.error("piContext: failed to open file from pi", err);
   }
 }
 
@@ -198,6 +199,25 @@ function updateStatusBar() {
 export function activate(context: vscode.ExtensionContext) {
   enabled = config().get<boolean>("enabled") ?? true;
 
+  // Start the IPC server and stamp its port into the terminal environment so
+  // any `pi` launched in a VSCode terminal connects automatically.
+  ipc = new IpcServer({
+    onConnect: (send) => {
+      send({ type: "context", data: collectContext() } as OutgoingMessage);
+    },
+    onMessage: (msg) => {
+      if (msg.type === "open") handleOpen(msg);
+    },
+    onListening: (port) => {
+      // Persist so we can reclaim the same port after a reload — running pi
+      // clients keep retrying it and reconnect automatically.
+      context.workspaceState.update(PORT_KEY, port);
+      context.environmentVariableCollection.replace(PORT_ENV, String(port));
+    },
+    onError: (err) => console.error("piContext: ipc server error", err),
+  });
+  ipc.listen(context.workspaceState.get<number>(PORT_KEY));
+
   statusBar = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Right,
     100,
@@ -213,15 +233,7 @@ export function activate(context: vscode.ExtensionContext) {
       updateStatusBar();
       if (enabled) writeContext();
     }),
-    vscode.commands.registerCommand("piContext.writeNow", () => {
-      writeContext();
-      vscode.window.showInformationMessage(
-        `Pi context written to ${resolvePath()}`,
-      );
-    }),
-    vscode.commands.registerCommand("piContext.showPath", () => {
-      vscode.window.showInformationMessage(`Pi context file: ${resolvePath()}`);
-    }),
+    vscode.commands.registerCommand("piContext.sendToPi", sendSelectionToPi),
     vscode.window.onDidChangeActiveTextEditor(scheduleWrite),
     vscode.window.onDidChangeTextEditorSelection(scheduleWrite),
     vscode.window.tabGroups.onDidChangeTabs(scheduleWrite),
@@ -240,4 +252,6 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
   if (debounceTimer) clearTimeout(debounceTimer);
+  ipc?.dispose();
+  ipc = undefined;
 }

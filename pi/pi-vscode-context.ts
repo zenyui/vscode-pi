@@ -2,22 +2,26 @@
 //
 // Install: copy to ~/.pi/agent/extensions/ (global) or .pi/extensions/ (project).
 //
+// Talks to the VSCode extension over a loopback socket. VSCode owns the server
+// and exports its port via PI_VSCODE_PORT into the terminal env; we dial it.
+//
 // What it does:
 //   - Auto-injects your ACTIVE FILE + SELECTED LINES into every message you send,
 //     as hidden metadata (deduped). Open-files list is left to the pull tool to
 //     keep turns small.
 //   - Shows a live footer status of what's selected in the TUI.
+//   - Receives `Cmd+Alt+K` mentions from VSCode into the prompt box.
 //   - `/vscode-auto [on|off]` toggles auto-injection.
 //   - `/vscode` and the `vscode_context` tool pull the FULL context on demand.
+//   - `open_in_editor` asks VSCode to open + highlight a line range.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import * as fs from "fs";
 import * as path from "path";
-import * as os from "os";
+import * as net from "net";
 import * as crypto from "crypto";
-import { execFile } from "child_process";
 
 const STATUS_KEY = "vscode";
+const PORT_ENV = "PI_VSCODE_PORT";
 
 interface Selection {
   startLine: number;
@@ -25,42 +29,16 @@ interface Selection {
   text: string;
   truncated: boolean;
 }
+interface OpenFile {
+  path: string;
+  active: boolean;
+  languageId?: string;
+  dirty: boolean;
+}
 interface Ctx {
   activeFile: string | null;
-  openFiles: { path: string; active: boolean; dirty: boolean }[];
+  openFiles: OpenFile[];
   selection: { path: string; languageId: string; cursorLine: number; selections: Selection[] } | null;
-}
-
-function candidatePaths(cwd: string): string[] {
-  const fromEnv = process.env.PI_VSCODE_CONTEXT;
-  return [
-    fromEnv,
-    path.join(cwd, ".pi", "vscode-context.md"),
-    path.join(os.homedir(), ".pi", "vscode-context.md"),
-  ].filter((p): p is string => !!p);
-}
-
-function readMarkdown(cwd: string): { path: string; content: string } | null {
-  for (const p of candidatePaths(cwd)) {
-    try {
-      return { path: p, content: fs.readFileSync(p, "utf8") };
-    } catch {
-      // try next
-    }
-  }
-  return null;
-}
-
-function readJson(cwd: string): { path: string; data: Ctx } | null {
-  for (const md of candidatePaths(cwd)) {
-    const jsonPath = md.replace(/\.md$/, ".json");
-    try {
-      return { path: jsonPath, data: JSON.parse(fs.readFileSync(jsonPath, "utf8")) };
-    } catch {
-      // try next
-    }
-  }
-  return null;
 }
 
 // Short one-liner for the TUI footer: "vscode: extension.ts L120-148"
@@ -79,40 +57,134 @@ function statusLine(data: Ctx): string {
   return "📎 vscode: no file";
 }
 
+// Full markdown view of the editor state (for the pull tool + /vscode command).
+function renderMarkdown(data: Ctx): string {
+  const lines: string[] = ["# VSCode editor context", ""];
+
+  lines.push("## Active file");
+  lines.push(data.activeFile ? `\`${data.activeFile}\`` : "_none_");
+  lines.push("");
+
+  lines.push("## Open files");
+  if (!data.openFiles.length) {
+    lines.push("_none_");
+  } else {
+    for (const f of data.openFiles) {
+      const marks = [f.active ? "active" : null, f.dirty ? "unsaved" : null].filter(Boolean).join(", ");
+      lines.push(`- \`${f.path}\`${marks ? ` (${marks})` : ""}`);
+    }
+  }
+  lines.push("");
+
+  lines.push("## Selection");
+  const sel = data.selection;
+  if (!sel || sel.selections.length === 0) {
+    const cur = sel ? ` (cursor at line ${sel.cursorLine})` : "";
+    lines.push(`_no selection_${cur}`);
+  } else {
+    for (const s of sel.selections) {
+      lines.push(`\`${sel.path}\` lines ${s.startLine}-${s.endLine}${s.truncated ? " (truncated)" : ""}:`);
+      lines.push("");
+      lines.push("```" + sel.languageId);
+      lines.push(s.text);
+      lines.push("```");
+      lines.push("");
+    }
+  }
+  return lines.join("\n") + "\n";
+}
+
+// ---- Live socket link to the VSCode extension (server) ----------------------
+// VSCode owns the server and exports its port via PI_VSCODE_PORT. We dial it,
+// receive `context` pushes (drive footer + injection + tools), receive `inject`
+// (drop a mention into the prompt), and send `open` requests.
+interface LiveLink {
+  latest: Ctx | null;
+  send: (msg: { type: "open"; path: string; line?: number; endLine?: number; column?: number }) => boolean;
+  connected: () => boolean;
+}
+
+function connectVscode(handlers: {
+  onContext: (data: Ctx) => void;
+  onInject: (text: string) => void;
+}): LiveLink | null {
+  const port = Number(process.env[PORT_ENV]);
+  if (!port) return null;
+
+  const link: LiveLink = { latest: null, send: () => false, connected: () => false };
+  let socket: net.Socket | undefined;
+  let buffer = "";
+  let stopped = false;
+
+  const dial = () => {
+    if (stopped) return;
+    socket = net.connect(port, "127.0.0.1");
+    socket.setEncoding("utf8");
+    link.send = (msg) => {
+      if (socket && socket.writable) return socket.write(JSON.stringify(msg) + "\n");
+      return false;
+    };
+    link.connected = () => !!socket && !socket.destroyed && socket.writable;
+    socket.on("data", (chunk: string) => {
+      buffer += chunk;
+      let idx: number;
+      while ((idx = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 1);
+        if (!line.trim()) continue;
+        try {
+          const msg = JSON.parse(line);
+          if (msg.type === "context") {
+            link.latest = msg.data as Ctx;
+            handlers.onContext(msg.data as Ctx);
+          } else if (msg.type === "inject") {
+            handlers.onInject(msg.text as string);
+          }
+        } catch {
+          // ignore malformed line
+        }
+      }
+    });
+    const retry = () => {
+      socket = undefined;
+      buffer = "";
+      if (!stopped) setTimeout(dial, 1000);
+    };
+    socket.on("close", retry);
+    socket.on("error", () => socket?.destroy());
+  };
+  dial();
+
+  // Best-effort teardown when the process exits.
+  process.on("exit", () => { stopped = true; socket?.destroy(); });
+  return link;
+}
+
 export default function (pi: ExtensionAPI) {
   let lastInjectedHash = "";
+  let link: LiveLink | null = null;
+  const NO_LINK = "Not connected to VSCode. Run pi in a VSCode integrated terminal.";
 
-  // ---- Live footer status, driven by a watcher on the context file ----
+  // ---- Live footer status + socket link ----
   pi.on("session_start", async (_event, ctx) => {
     if (!ctx.hasUI) return;
 
-    const update = () => {
-      const found = readJson(process.cwd());
-      if (found) ctx.ui.setStatus(STATUS_KEY, statusLine(found.data));
-    };
-    update();
+    link = connectVscode({
+      onContext: (data) => ctx.ui.setStatus(STATUS_KEY, statusLine(data)),
+      onInject: (text) => {
+        // setEditorText replaces the buffer; append to preserve any draft.
+        const existing = ctx.ui.getEditorText?.() ?? "";
+        const next = existing ? `${existing} ${text}` : text;
+        ctx.ui.setEditorText(next);
+      },
+    });
 
-    const found = readJson(process.cwd());
-    if (found) {
-      try {
-        const dir = path.dirname(found.path);
-        const base = path.basename(found.path);
-        let timer: NodeJS.Timeout | undefined;
-        fs.watch(dir, (_evt, fname) => {
-          if (fname && fname !== base) return;
-          if (timer) clearTimeout(timer);
-          timer = setTimeout(update, 100);
-        });
-      } catch {
-        // watching unavailable; status is still set once above
-      }
-    }
+    if (!link) ctx.ui.setStatus(STATUS_KEY, "📎 vscode: not connected");
   });
 
   let autoInject = true;
 
-  // Build a compact, selection-focused payload from the structured JSON.
-  // Returns null when there's nothing worth sending.
+  // Build a compact, selection-focused payload. Null when nothing worth sending.
   const buildInjection = (data: Ctx): string | null => {
     const sel = data.selection;
     if (sel && sel.selections.length > 0) {
@@ -137,9 +209,9 @@ export default function (pi: ExtensionAPI) {
   // ---- Smart auto-injection: attach active file + selection to each turn ----
   pi.on("before_agent_start", async (_event, _ctx) => {
     if (!autoInject) return;
-    const found = readJson(process.cwd());
-    if (!found) return;
-    const payload = buildInjection(found.data);
+    const data = link?.latest;
+    if (!data) return;
+    const payload = buildInjection(data);
     if (!payload) return;
 
     // Dedupe: skip if identical to what we injected last turn (saves tokens;
@@ -168,7 +240,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // ---- Open a file in VSCode at a specific line ----
+  // ---- Open a file in VSCode at a specific line/range ----
   pi.registerTool({
     name: "open_in_editor",
     label: "Open in VSCode",
@@ -180,33 +252,23 @@ export default function (pi: ExtensionAPI) {
       properties: {
         path: { type: "string", description: "File path (absolute, or relative to the project root)" },
         line: { type: "number", description: "1-based line number to jump to (optional)" },
+        endLine: { type: "number", description: "1-based end line to select through (optional)" },
         column: { type: "number", description: "1-based column (optional)" },
       },
       required: ["path"],
     } as never,
-    async execute(_id: unknown, params: { path: string; line?: number; column?: number }) {
-      const abs = path.isAbsolute(params.path) ? params.path : path.join(process.cwd(), params.path);
-      let target = abs;
-      if (params.line) {
-        target += `:${params.line}`;
-        if (params.column) target += `:${params.column}`;
-      }
-      const ok = await new Promise<{ ok: boolean; err?: string }>((resolve) => {
-        execFile("code", ["--goto", target], (error) => {
-          resolve(error ? { ok: false, err: error.message } : { ok: true });
-        });
-      });
+    async execute(_id: unknown, params: { path: string; line?: number; endLine?: number; column?: number }) {
       const where = params.line ? `${params.path}:${params.line}` : params.path;
+      const sent = link?.connected() && link.send({
+        type: "open",
+        path: params.path,
+        line: params.line,
+        endLine: params.endLine,
+        column: params.column,
+      });
       return {
-        content: [
-          {
-            type: "text",
-            text: ok.ok
-              ? `Opened ${where} in VSCode.`
-              : `Failed to open ${where} (is the 'code' command on PATH?): ${ok.err}`,
-          },
-        ],
-        details: { target },
+        content: [{ type: "text", text: sent ? `Opened ${where} in VSCode.` : NO_LINK }],
+        details: { via: "socket", sent: !!sent },
       };
     },
   });
@@ -220,14 +282,9 @@ export default function (pi: ExtensionAPI) {
       "and selected lines of code. Use this to know what the user is looking at.",
     parameters: { type: "object", properties: {} } as never,
     async execute() {
-      const found = readMarkdown(process.cwd());
-      if (!found) {
-        return {
-          content: [{ type: "text", text: "No VSCode context file found. Is the 'Pi Agent Context' extension running?" }],
-          details: {},
-        };
-      }
-      return { content: [{ type: "text", text: found.content }], details: { path: found.path } };
+      const data = link?.latest;
+      if (!data) return { content: [{ type: "text", text: NO_LINK }], details: {} };
+      return { content: [{ type: "text", text: renderMarkdown(data) }], details: {} };
     },
   });
 
@@ -235,14 +292,14 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("vscode", {
     description: "Inject current VSCode editor context (open files + selection)",
     handler: async (_args, ctx) => {
-      const found = readMarkdown(process.cwd());
-      if (!found) {
-        ctx.ui.notify("No VSCode context file found.", "warning");
+      const data = link?.latest;
+      if (!data) {
+        ctx.ui.notify(NO_LINK, "warning");
         return;
       }
       await pi.sendMessage({
         customType: "vscode-context",
-        content: `Here is my current VSCode editor context:\n\n${found.content}`,
+        content: `Here is my current VSCode editor context:\n\n${renderMarkdown(data)}`,
         display: true,
       });
     },

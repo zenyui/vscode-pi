@@ -40,11 +40,16 @@ agent now sees your editor context automatically.
 
 ## How it works
 
-VSCode and the terminal agent are separate processes, so they communicate
-through a file. On every editor change (debounced), the extension writes:
+VSCode and the terminal agent are separate processes, so they talk over a
+loopback socket. The extension runs the server and exports its port as
+`PI_VSCODE_PORT` into VSCode's integrated terminals. Any `pi` you launch there
+connects automatically and gets editor context pushed in real time — no files,
+no polling. The socket is bidirectional: the agent can also ask VSCode to open
+and highlight a line range, and you can push a mention the other way.
 
-- `<workspace>/.pi/vscode-context.md` — read by the agent
-- `<workspace>/.pi/vscode-context.json` — machine-readable version
+Because it relies on the terminal environment, `pi` must run in a **VSCode
+integrated terminal**. External terminals (iTerm, tmux) won't inherit the port
+and won't connect.
 
 The `📡 Pi` status bar item shows sharing is on. Click it to toggle off
 (`🚫 Pi`) when you want privacy.
@@ -59,28 +64,25 @@ Once the companion is installed, the agent can:
 - **`/vscode-auto off`** — pause auto-injection (`on` to resume).
 - **`/vscode`** — manually dump the full context, including open files.
 - **`vscode_context` tool** — the agent pulls full context on demand.
-- **`open_in_editor` tool** — the agent opens a file at a line in your window
-  (`code --goto path:line`).
+- **`open_in_editor` tool** — the agent opens a file in your window and selects
+  an exact line range.
 
-The companion looks for the context file in this order:
-`$PI_VSCODE_CONTEXT`, then `<cwd>/.pi/vscode-context.md`, then
-`~/.pi/vscode-context.md`.
+Push the other way with **`Cmd+Alt+K`** (`Ctrl+Alt+K` on Windows/Linux): drops
+a `@path#Lstart-end` mention for your selection straight into the pi prompt.
 
 ## Commands
 
 Available in the command palette:
 
 - **Pi Context: Toggle Sharing**
-- **Pi Context: Write Context Now**
-- **Pi Context: Show Context File Path**
+- **Pi Context: Send Selection to Pi** (`Cmd+Alt+K`)
 
 ## Settings
 
 | Setting (`piContext.*`) | Default | Description |
 |---|---|---|
 | `enabled` | `true` | Auto-share on every editor change |
-| `filePath` | `""` | Override output path (empty = `<workspace>/.pi/vscode-context.md`) |
-| `debounceMs` | `300` | Delay before writing after edits stop |
+| `debounceMs` | `300` | Delay before sharing after edits stop |
 | `maxSelectionLines` | `400` | Max selected lines shared verbatim |
 
 ## Development

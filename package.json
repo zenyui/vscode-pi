@@ -27,12 +27,17 @@
         "title": "Pi Context: Toggle Sharing"
       },
       {
-        "command": "piContext.writeNow",
-        "title": "Pi Context: Write Context Now"
-      },
+        "command": "piContext.sendToPi",
+        "title": "Pi Context: Send Selection to Pi"
+      }
+    ],
+    "keybindings": [
       {
-        "command": "piContext.showPath",
-        "title": "Pi Context: Show Context File Path"
+        "command": "piContext.sendToPi",
+        "key": "cmd+alt+k",
+        "win": "ctrl+alt+k",
+        "linux": "ctrl+alt+k",
+        "when": "editorTextFocus"
       }
     ],
     "configuration": {
@@ -41,17 +46,12 @@
         "piContext.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically write editor context for the Pi agent."
-        },
-        "piContext.filePath": {
-          "type": "string",
-          "default": "",
-          "description": "Absolute path to the context file. Empty = <workspace>/.pi/vscode-context.md"
+          "description": "Automatically share editor context with the Pi agent."
         },
         "piContext.debounceMs": {
           "type": "number",
           "default": 300,
-          "description": "Debounce delay (ms) before writing after an editor change."
+          "description": "Debounce delay (ms) before sharing after an editor change."
         },
         "piContext.maxSelectionLines": {
           "type": "number",

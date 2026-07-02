@@ -1,5 +1,4 @@
 node_modules/
 dist/
 *.vsix
-.pi/vscode-context.md
-.pi/vscode-context.json
+.vscode/
