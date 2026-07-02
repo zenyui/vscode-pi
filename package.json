@@ -1,0 +1,70 @@
+{
+  "name": "vscode-pi-ext",
+  "displayName": "Pi Agent Context",
+  "description": "Share your open files and selection with a terminal-based Pi agent.",
+  "version": "0.0.1",
+  "publisher": "zenyui",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "piContext.toggle",
+        "title": "Pi Context: Toggle Sharing"
+      },
+      {
+        "command": "piContext.writeNow",
+        "title": "Pi Context: Write Context Now"
+      },
+      {
+        "command": "piContext.showPath",
+        "title": "Pi Context: Show Context File Path"
+      }
+    ],
+    "configuration": {
+      "title": "Pi Agent Context",
+      "properties": {
+        "piContext.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically write editor context for the Pi agent."
+        },
+        "piContext.filePath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the context file. Empty = <workspace>/.pi/vscode-context.md"
+        },
+        "piContext.debounceMs": {
+          "type": "number",
+          "default": 300,
+          "description": "Debounce delay (ms) before writing after an editor change."
+        },
+        "piContext.maxSelectionLines": {
+          "type": "number",
+          "default": 400,
+          "description": "Maximum number of selected lines to include verbatim."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18",
+    "watch": "npm run build -- --sourcemap --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.21.0",
+    "typescript": "^5.4.0"
+  }
+}
