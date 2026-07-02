@@ -1,6 +1,7 @@
 .vscode/**
 src/**
 pi/**
+!pi/pi-vscode-context.ts
 scripts/**
 node_modules/**
 tsconfig.json

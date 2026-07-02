@@ -1,4 +1,6 @@
 import * as vscode from "vscode";
+import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { IpcServer, IncomingMessage, OutgoingMessage } from "./ipc";
 
@@ -196,8 +198,33 @@ function updateStatusBar() {
   statusBar.show();
 }
 
+// Copy the bundled pi companion into ~/.pi/agent/extensions/ so users only
+// have to install the VSCode extension. No-ops if already up to date.
+function installCompanion(context: vscode.ExtensionContext) {
+  if (!config().get<boolean>("autoInstallCompanion", true)) return;
+  try {
+    const src = path.join(context.extensionPath, "pi", "pi-vscode-context.ts");
+    if (!fs.existsSync(src)) return;
+    const destDir = path.join(os.homedir(), ".pi", "agent", "extensions");
+    const dest = path.join(destDir, "pi-vscode-context.ts");
+    const incoming = fs.readFileSync(src, "utf8");
+    const existing = fs.existsSync(dest) ? fs.readFileSync(dest, "utf8") : null;
+    if (existing === incoming) return;
+    fs.mkdirSync(destDir, { recursive: true });
+    fs.writeFileSync(dest, incoming, "utf8");
+    vscode.window.showInformationMessage(
+      existing === null
+        ? "Pi companion installed. Start a fresh pi session in a VSCode terminal."
+        : "Pi companion updated. Restart your pi session to pick up changes.",
+    );
+  } catch (err) {
+    console.error("piContext: failed to install pi companion", err);
+  }
+}
+
 export function activate(context: vscode.ExtensionContext) {
   enabled = config().get<boolean>("enabled") ?? true;
+  installCompanion(context);
 
   // Start the IPC server and stamp its port into the terminal environment so
   // any `pi` launched in a VSCode terminal connects automatically.

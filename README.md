@@ -1,42 +1,45 @@
 # Pi Agent VSCode Extension
 
 Shares your VSCode editor state with a terminal-based Pi agent so you don't
-have to describe what you're looking at.
-
-On every editor change, the extension writes a context file with:
+have to describe what you're looking at. It exposes:
 
 - the active file you're viewing
 - all open files
 - the exact lines you have selected (with file and line numbers)
 
-Your terminal Pi agent reads that file, so you can say "this function" instead
-of copy-pasting.
+so you can say "this function" instead of copy-pasting.
 
-## Quickstart
+## Install
 
-**1. Build and install the VSCode extension:**
+There are two halves — the VSCode extension and a small Pi companion — but the
+extension installs the companion for you.
 
-```sh
-npm install
-npm run package                              # → vscode-pi-ext-0.0.1.vsix
-code --install-extension vscode-pi-ext-0.0.1.vsix
-```
-
-Reload VSCode. A `📡 Pi` indicator appears in the status bar.
-
-**2. Install the Pi companion extension:**
+**1. Install the VSCode extension.** Search **"Pi Agent Context"** in the
+Extensions panel, or from the command line:
 
 ```sh
-cp pi/pi-vscode-context.ts ~/.pi/agent/extensions/
+code --install-extension zenyui.vscode-pi-ext
 ```
 
-If Pi is already running, type `/reload`.
+Don't use the MS Marketplace (Cursor, VSCodium, Windsurf)? Grab the `.vsix`
+from [Releases](https://github.com/zenyui/vscode-pi/releases) and:
 
-**3. Use it.** Open a project in VSCode and run `pi` in the same project. The
-agent now sees your editor context automatically.
+```sh
+code --install-extension vscode-pi-ext-*.vsix
+```
 
-> Developing the extension? Press `F5` in VSCode to launch an Extension
-> Development Host instead of packaging.
+**2. Reload VSCode.** On startup the extension drops the Pi companion into
+`~/.pi/agent/extensions/` automatically. A `📡 Pi` indicator appears in the
+status bar.
+
+**3. Use it.** Open a project and run `pi` in a **VSCode integrated terminal**.
+The agent now sees your editor context automatically.
+
+> Prefer to manage the companion with pi directly? It's also a pi package:
+> `pi install git:github.com/zenyui/vscode-pi`
+
+> Developing the extension? `npm install && npm run package`, install the
+> generated `.vsix`, or press `F5` for an Extension Development Host.
 
 ## How it works
 

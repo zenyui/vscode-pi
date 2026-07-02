@@ -6,9 +6,19 @@
   "publisher": "zenyui",
   "license": "MIT",
   "icon": "images/icon.png",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "agent"
+  ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/zenyui/vscode-pi-ext.git"
+    "url": "https://github.com/zenyui/vscode-pi.git"
+  },
+  "pi": {
+    "extensions": [
+      "pi/pi-vscode-context.ts"
+    ]
   },
   "engines": {
     "vscode": "^1.85.0"
@@ -57,6 +67,11 @@
           "type": "number",
           "default": 400,
           "description": "Maximum number of selected lines to include verbatim."
+        },
+        "piContext.autoInstallCompanion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically install/update the Pi companion extension into ~/.pi/agent/extensions/ on startup."
         }
       }
     }
@@ -74,5 +89,13 @@
     "@vscode/vsce": "^2.24.0",
     "esbuild": "^0.21.0",
     "typescript": "^5.4.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
   }
 }
