@@ -27,20 +27,20 @@ jobs:
       - run: npm run typecheck
 
       - name: Package VSIX
-        run: npx vsce package --out vscode-pi-ext-${{ github.ref_name }}.vsix
+        run: npx vsce package --out vscode-pi-${{ github.ref_name }}.vsix
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: vscode-pi-ext-*.vsix
+          files: vscode-pi-*.vsix
           generate_release_notes: true
 
       # Optional: publish to the VS Code Marketplace when VSCE_PAT is set.
       - name: Publish to VS Code Marketplace
         if: env.VSCE_PAT != ''
-        run: npx vsce publish --packagePath vscode-pi-ext-*.vsix
+        run: npx vsce publish --packagePath vscode-pi-*.vsix
 
       # Optional: publish to Open VSX (Cursor/VSCodium/Windsurf) when OVSX_PAT is set.
       - name: Publish to Open VSX
         if: env.OVSX_PAT != ''
-        run: npx ovsx publish vscode-pi-ext-*.vsix -p "$OVSX_PAT"
+        run: npx ovsx publish vscode-pi-*.vsix -p "$OVSX_PAT"
