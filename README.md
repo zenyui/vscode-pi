@@ -14,7 +14,7 @@ so you can say "this function" instead of copy-pasting.
 There are two halves — the VSCode extension and a small Pi companion — but the
 extension installs the companion for you.
 
-**1. Install the VSCode extension.** Search **"Pi Agent Context"** in the
+**1. Install the VSCode extension.** Search **"VSCode Pi Agent Context"** in the
 Extensions panel, or from the command line:
 
 ```sh
@@ -87,6 +87,7 @@ Available in the command palette:
 | `enabled` | `true` | Auto-share on every editor change |
 | `debounceMs` | `300` | Delay before sharing after edits stop |
 | `maxSelectionLines` | `400` | Max selected lines shared verbatim |
+| `autoInstallCompanion` | `true` | Install/update the Pi companion into `~/.pi/agent/extensions/` on startup |
 
 ## Development
 
