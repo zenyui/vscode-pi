@@ -18,14 +18,14 @@ extension installs the companion for you.
 Extensions panel, or from the command line:
 
 ```sh
-code --install-extension zenyui.vscode-pi
+code --install-extension zenyui.vscode-pi-bridge
 ```
 
 Don't use the MS Marketplace (Cursor, VSCodium, Windsurf)? Grab the `.vsix`
 from [Releases](https://github.com/zenyui/vscode-pi/releases) and:
 
 ```sh
-code --install-extension vscode-pi-*.vsix
+code --install-extension vscode-pi-bridge-*.vsix
 ```
 
 **2. Reload VSCode.** On startup the extension drops the Pi companion into

@@ -1,5 +1,5 @@
 {
-  "name": "vscode-pi",
+  "name": "vscode-pi-bridge",
   "displayName": "VSCode Pi Agent Context",
   "description": "Share your open files and selection with a terminal-based Pi agent.",
   "version": "0.0.1",
