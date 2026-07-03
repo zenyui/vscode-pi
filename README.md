@@ -97,3 +97,5 @@ npm run watch     # rebuild on save
 ```
 
 Press `F5` to launch an Extension Development Host.
+
+See [docs/marketplaces.md](docs/marketplaces.md) for publishing and releases.
