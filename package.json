@@ -1,6 +1,6 @@
 {
   "name": "vscode-pi-bridge",
-  "displayName": "VSCode Pi Agent Context",
+  "displayName": "VSCode Pi Agent Bridge",
   "description": "Share your open files and selection with a terminal-based Pi agent.",
   "version": "0.0.1",
   "publisher": "zenyui",
@@ -51,7 +51,7 @@
       }
     ],
     "configuration": {
-      "title": "Pi Agent Context",
+      "title": "VSCode Pi Agent Bridge",
       "properties": {
         "piContext.enabled": {
           "type": "boolean",

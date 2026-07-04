@@ -1,4 +1,4 @@
-# Pi Agent VSCode Extension
+# VSCode Pi Agent Bridge
 
 Shares your VSCode editor state with a terminal-based Pi agent so you don't
 have to describe what you're looking at. It exposes:
@@ -14,7 +14,7 @@ so you can say "this function" instead of copy-pasting.
 There are two halves — the VSCode extension and a small Pi companion — but the
 extension installs the companion for you.
 
-**1. Install the VSCode extension.** Search **"VSCode Pi Agent Context"** in the
+**1. Install the VSCode extension.** Search **"VSCode Pi Agent Bridge"** in the
 Extensions panel, or from the command line:
 
 ```sh
