@@ -2,7 +2,7 @@
   "name": "vscode-pi-bridge",
   "displayName": "VSCode Pi Agent Bridge",
   "description": "Share your open files and selection with a terminal-based Pi agent.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "zenyui",
   "license": "MIT",
   "icon": "images/icon.png",
