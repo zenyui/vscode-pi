@@ -179,7 +179,10 @@ export default function (pi: ExtensionAPI) {
       },
     });
 
-    if (!link) ctx.ui.setStatus(STATUS_KEY, "📎 vscode: not connected");
+    // Only show a placeholder when we're actually inside VSCode (link != null).
+    // Outside VSCode (no PI_VSCODE_PORT) we stay silent entirely.
+    if (link) ctx.ui.setStatus(STATUS_KEY, "📎 vscode: connecting…");
+
   });
 
   let autoInject = true;
