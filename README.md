@@ -1,4 +1,8 @@
-# VSCode Pi Agent Bridge
+<p align="center">
+  <img alt="pi + VSCode" src="images/banner.svg" width="320">
+</p>
+
+<h1 align="center">VSCode Pi Agent Bridge</h1>
 
 Shares your VSCode editor state with a terminal-based Pi agent so you don't
 have to describe what you're looking at. It exposes:
