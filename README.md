@@ -1,5 +1,5 @@
 <p align="center">
-  <img alt="VSCode + pi" src="images/banner.svg" width="220">
+  <img alt="VSCode + pi" src="images/banner.png" width="220">
 </p>
 
 <h1 align="center">VSCode Pi Agent Bridge</h1>
