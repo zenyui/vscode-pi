@@ -49,12 +49,21 @@ function statusLine(data: Ctx): string {
     const ranges = sel.selections
       .map((s) => (s.startLine === s.endLine ? `L${s.startLine}` : `L${s.startLine}-${s.endLine}`))
       .join(", ");
-    return `📎 vscode: ${file} ${ranges}`;
+    return `vscode: ${file} ${ranges}`;
   }
   if (data.activeFile) {
-    return `📎 vscode: ${path.basename(data.activeFile)} (no selection)`;
+    return `vscode: ${path.basename(data.activeFile)} (no selection)`;
   }
-  return "📎 vscode: no file";
+  return "vscode: no file";
+}
+
+// Widget factory: renders a single line flush-left (no leading padding, unlike
+// the string-array form of setWidget which prefixes each line with a space).
+function lineWidget(text: string) {
+  return () => ({
+    render: () => [text],
+    invalidate: () => {},
+  });
 }
 
 // Full markdown view of the editor state (for the pull tool + /vscode command).
@@ -170,7 +179,7 @@ export default function (pi: ExtensionAPI) {
     if (!ctx.hasUI) return;
 
     link = connectVscode({
-      onContext: (data) => ctx.ui.setStatus(STATUS_KEY, statusLine(data)),
+      onContext: (data) => ctx.ui.setWidget(STATUS_KEY, lineWidget(statusLine(data)), { placement: "aboveEditor" }),
       onInject: (text) => {
         // setEditorText replaces the buffer; append to preserve any draft.
         const existing = ctx.ui.getEditorText?.() ?? "";
@@ -181,7 +190,7 @@ export default function (pi: ExtensionAPI) {
 
     // Only show a placeholder when we're actually inside VSCode (link != null).
     // Outside VSCode (no PI_VSCODE_PORT) we stay silent entirely.
-    if (link) ctx.ui.setStatus(STATUS_KEY, "📎 vscode: connecting…");
+    if (link) ctx.ui.setWidget(STATUS_KEY, lineWidget("vscode: connecting…"), { placement: "aboveEditor" });
 
   });
 
